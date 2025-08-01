@@ -49,7 +49,7 @@ def analisar_prova(texto):
         if erro_alt:
             relatorio.append(f"Questão {idx+1}: {erro_alt}")
             status = "REVISAR ❌"
-        # Checagem simples de contextualização (pode adaptar os termos abaixo)
+        # Checagem simples de contextualização (adapte os termos se quiser)
         if not re.search(r'(situa[cç][ãa]o|contexto|hist[oó]ria|caso|cen[aá]rio|exemplo|baseado)', q, re.IGNORECASE):
             relatorio.append(f"Questão {idx+1}: Pode faltar contextualização.")
             status = "REVISAR ❌"
