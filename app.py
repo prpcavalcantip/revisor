@@ -7,7 +7,7 @@ st.title("Revisor Automático de Provas (Colégio Êxodo)")
 st.markdown("""
 Envie o PDF da prova para uma análise automática:<br>
 - Entre 15 e 20 questões;<br>
-- Cada questão deve ter exatamente 5 alternativas rotuladas (a)-(e);<br>
+- Cada questão deve ter exatamente 5 alternativas rotuladas (a)-(e) ou A)-E);<br>
 - Questões contextualizadas;<br>
 - Alternativas não repetidas.
 """, unsafe_allow_html=True)
@@ -22,7 +22,11 @@ def extrair_texto_pdf(pdf_file):
     return texto
 
 def checar_alternativas(questao):
-    alternativas = re.findall(r'\(([a-eA-E])\)', questao)
+    # Aceita (a), (A), a), A), a., A., a-, A-, etc.
+    alternativas = re.findall(
+        r'[\(\[]?\s*([a-eA-E])\s*[\)\]\.\-:]|([a-eA-E])\)', questao)
+    # O findall acima retorna uma lista de tuplas, precisamos pegar o grupo correto
+    alternativas = [a or b for a, b in alternativas]
     alternativas = [alt.lower() for alt in alternativas]
     set_esperado = {'a', 'b', 'c', 'd', 'e'}
     set_encontrado = set(alternativas)
