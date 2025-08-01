@@ -1,71 +1,72 @@
 import streamlit as st
+import pdfplumber
 import re
 
-# Funções de checagem
-def menciona_grafico_ou_imagem(texto):
-    return bool(re.search(r'(gr[aá]fico|imagem|figura|tabela|diagrama)', texto, re.IGNORECASE))
+def extrair_texto_pdf(pdf_file):
+    texto = ''
+    with pdfplumber.open(pdf_file) as pdf:
+        for pagina in pdf.pages:
+            texto += pagina.extract_text() + '\n'
+    return texto
 
-def tem_contexto(texto):
-    # Checagem simples: procura palavras indicativas de contexto
-    return bool(re.search(r'(situa[cç][ãa]o|contexto|hist[oó]ria|caso|cen[aá]rio|exemplo|baseado)', texto, re.IGNORECASE))
-
-def revisar_questao(q, idx):
+def analisar_prova(texto):
     relatorio = []
-    alternativas = [a.strip() for a in q['alternativas'] if a.strip()]
-    if len(alternativas) != 5:
-        relatorio.append(f"Questão {idx+1}: número de alternativas diferente de 5.")
-    if len(set(alternativas)) != 5:
-        relatorio.append(f"Questão {idx+1}: alternativas repetidas.")
-    if not tem_contexto(q['enunciado']):
-        relatorio.append(f"Questão {idx+1}: falta contextualização.")
-    if menciona_grafico_ou_imagem(q['enunciado']) and not q['tem_imagem']:
-        relatorio.append(f"Questão {idx+1}: menciona gráfico/imagem, mas não está presente.")
-    # Simulação de checagem de gramática, ortografia e fluência
-    if len(q['enunciado'].split()) < 8:
-        relatorio.append(f"Questão {idx+1}: enunciado muito curto (pode prejudicar a fluência/contexto).")
-    return relatorio
+    # Contagem de questões (simples: "Questão" ou "Q." ou "Q ")
+    questoes = re.findall(r'(?i)(quest(ã|a)o\s*\d+|q[\.\s]\s*\d+)', texto)
+    num_questoes = len(questoes)
 
-st.set_page_config(page_title="Revisor de Provas - Colégio Êxodo", layout="wide")
-st.title("📝 Revisor de Provas - Colégio Êxodo")
+    if num_questoes < 15 or num_questoes > 20:
+        relatorio.append(f"Número de questões fora do padrão: {num_questoes} (deve ter entre 15 e 20).")
+
+    # Cada questão deve ser de múltipla escolha e ter 5 alternativas (a-e)
+    padrao_questao = re.compile(r'(Quest(ã|a)o\s*\d+|Q[\.\s]\s*\d+)(.*?)(?=Quest(ã|a)o\s*\d+|Q[\.\s]\s*\d+|$)', re.DOTALL | re.IGNORECASE)
+    questoes_textos = padrao_questao.findall(texto)
+    for idx, q in enumerate(questoes_textos):
+        enunciado = q[2]
+        alternativas = re.findall(r'\([a-eA-E]\)', enunciado)
+        if len(alternativas) != 5:
+            relatorio.append(f"Questão {idx+1}: não tem 5 alternativas (a-e).")
+        if len(set(alternativas)) != len(alternativas):
+            relatorio.append(f"Questão {idx+1}: alternativas repetidas.")
+        # Contexto mínimo
+        if not re.search(r'(situa[cç][ãa]o|contexto|hist[oó]ria|caso|cen[aá]rio|exemplo|baseado)', enunciado, re.IGNORECASE):
+            relatorio.append(f"Questão {idx+1}: pode faltar contextualização.")
+        # Gráfico/figura
+        if re.search(r'(gr[aá]fico|imagem|figura|tabela|diagrama)', enunciado, re.IGNORECASE):
+            if not re.search(r'(imagem|figura|tabela|diagrama|gr[aá]fico)\s*(\d+)?', texto):
+                relatorio.append(f"Questão {idx+1}: menciona gráfico/imagem, mas pode não estar presente.")
+    # Diagnóstico final
+    if not relatorio:
+        return "APROVADA ✅", []
+    else:
+        return "REVISAR ❌", relatorio
+
+st.title("Diagnóstico Automático de Provas por PDF - Colégio Êxodo")
 
 st.markdown("""
-Este aplicativo revisa automaticamente provas de múltipla escolha dos professores, analisando:
-- Quantidade de questões (mínimo 15, máximo 20)
-- Gramática, ortografia e fluência do enunciado (simulação)
-- Todas as questões são de múltipla escolha e possuem 5 alternativas (a-e)
+Faça upload do PDF da prova. O sistema vai diagnosticar automaticamente:
+- Quantidade de questões (15 a 20)
+- Todas as questões de múltipla escolha, com 5 alternativas (a-e)
+- Sem alternativas repetidas
 - Questões contextualizadas
-- Não pode haver alternativas repetidas
-- Se o enunciado mencionar gráfico/figura, a imagem deve estar presente
+- Se menciona gráfico/imagem, verifica se está presente
 """)
 
-with st.form("prova_form"):
-    num_q = st.number_input("Quantidade de questões", min_value=1, max_value=30, value=15)
-    questoes = []
-    for i in range(num_q):
-        st.markdown(f"---\n### Questão {i+1}")
-        enunciado = st.text_area(f"Enunciado da questão {i+1}", key=f"enun_{i}")
-        alternativas = []
-        cols = st.columns(5)
-        for j, letra in enumerate(['a', 'b', 'c', 'd', 'e']):
-            alternativas.append(cols[j].text_input(f"{letra})", key=f"{i}_{letra}"))
-        tem_imagem = st.checkbox("Possui gráfico/figura/imagem?", key=f"img{i}")
-        questoes.append({
-            "enunciado": enunciado,
-            "alternativas": alternativas,
-            "tem_imagem": tem_imagem
-        })
-    enviar = st.form_submit_button("Revisar Prova")
+pdf_file = st.file_uploader("Envie o PDF da prova", type=["pdf"])
 
-if enviar:
-    relatorio_global = []
-    if not (15 <= num_q <= 20):
-        relatorio_global.append("A prova deve ter entre 15 e 20 questões.")
-    for idx, q in enumerate(questoes):
-        relatorio_global += revisar_questao(q, idx)
-    st.markdown("## Resultado da Revisão")
-    if not relatorio_global:
-        st.success("APROVADO ✅ Sua prova está de acordo com todos os critérios!")
+if pdf_file:
+    st.info("Processando o PDF...")
+    texto_prova = extrair_texto_pdf(pdf_file)
+    status, relatorio = analisar_prova(texto_prova)
+    st.subheader("Diagnóstico da Prova:")
+    if status == "APROVADA ✅":
+        st.success("APROVADA ✅ Sua prova está de acordo com todos os critérios!")
     else:
         st.error("REVISAR ❌ Sua prova apresenta pendências:")
-        for item in relatorio_global:
+        for item in relatorio:
             st.write("-", item)
+
+    st.markdown("----")
+    st.markdown("**Visualização do texto extraído (opcional):**")
+    with st.expander("Mostrar texto extraído do PDF"):
+        st.write(texto_prova)
